@@ -51,6 +51,8 @@ config and an example test. The
 | [`@e2e-dev/kernel`](https://www.npmjs.com/package/@e2e-dev/kernel) | Kernel hosted browsers for the web engine. |
 | [`@e2e-dev/eas`](https://www.npmjs.com/package/@e2e-dev/eas) | EAS Simulators hosted iOS simulators and Android emulators for the mobile engine. |
 
+Ramus cloud Android devices are available through [`@e2e-dev/ramus`](packages/ramus).
+
 ## Documentation
 
 [e2e.tester.army/docs](https://e2e.tester.army/docs). The `e2e` package ships

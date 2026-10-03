@@ -1,0 +1,90 @@
+---
+title: Ramus
+description: Run Android tests on Ramus cloud emulators through an ADB tunnel.
+---
+
+`ramus()` from `@e2e-dev/ramus` is a [device provider](/mobile#hosted-devices).
+It uploads your APK to Ramus and leases an Android device per worker.
+The runner drives each device with agent-device through a local ADB tunnel.
+It needs Node.js and Android platform-tools on PATH, but no KVM or local emulator.
+
+## Setup
+
+<CodeGroup>
+```bash npm
+npm install --save-dev @e2e-dev/ramus ramus-cli
+```
+```bash pnpm
+pnpm add -D @e2e-dev/ramus ramus-cli
+```
+```bash bun
+bun add -d @e2e-dev/ramus ramus-cli
+```
+</CodeGroup>
+
+Set `RAMUS_API_KEY` from [Ramus settings](https://ramus.dev/settings).
+A signed-in account is required because trial keys cannot open ADB tunnels.
+Provide the local APK as `app.appPath` and its package name as `app.bundleId`.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+import { ramus } from '@e2e-dev/ramus';
+
+export default {
+  workers: 1,
+  targets: [{
+    name: 'android',
+    engine: mobile({ platform: 'android', device: ramus() }),
+    app: { bundleId: 'com.example.app', appPath: './build/app.apk' },
+  }],
+} satisfies E2EConfig;
+```
+
+The provider installs the APK before returning the device to e2e. A test can
+call `app.open()` directly. Agent steps still need [a model](/models).
+
+## Continuous integration
+
+Build or download the APK before the test step. Store `RAMUS_API_KEY` as a CI
+secret and expose it only to trusted code. Add these steps to your existing
+GitHub Actions job after dependency installation and the APK build. The runner
+must have Android platform-tools; GitHub's Ubuntu images include the Android SDK.
+
+```yaml
+- name: Add Android platform-tools
+  run: echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+- name: Run Android tests on Ramus
+  run: npx e2e run --target android --reporter list,junit
+  env:
+    RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
+- name: Upload test results
+  if: ${{ !cancelled() }}
+  uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+  with:
+    name: e2e-android
+    path: .e2e
+```
+
+Choose `workers` within your Ramus account's concurrent-session limit. Separate
+e2e processes sharing an agent-device daemon need different `mobile().session`
+values. Backend services running on the CI runner are not automatically reachable
+from the cloud device; use a reachable test backend or arrange ADB port reversal.
+
+## Lifecycle and limits
+
+- Android only. iOS tests need another provider.
+- The provider requires an APK and package name. PR build selection is not supported.
+- `startupTimeout` defaults to 180000 milliseconds for readiness and tunnel connection.
+  Upload and creation have a separate four-minute budget.
+- Each worker gets private Ramus CLI state. Normal completion, failed startup,
+  and cancellation attempt to close the tunnel, end the session, and stop its daemon.
+- Cancellation during creation first waits for the session id. If creation loses
+  both its response and local state, Ramus idle expiry is the final cleanup mechanism.
+  A killed CI machine cannot execute teardown either.
+- Cleanup failures report the session id and retain CLI state for recovery.
+  Share links and raw CLI diagnostics are not written to CI output.
+- Video and screenshots come from agent-device. Ramus's MCP endpoint is not used.
+
+See [mobile CI](/mobile-ci) for build examples and [CI](/ci) for model credentials
+and artifact handling.
